@@ -111,18 +111,17 @@ describe Fluent::Plugin::SQSOutput do
   describe '#write' do
     let(:config) do
       %(
+       include_tag_in_message_attributes true
        queue_name QUEUE_NAME
       )
     end
 
-    let(:record) { {} }
-    let(:body) { double(:body, bytesize: 1) }
+    let(:record) { {"foo" => "bar"} }
+    let(:body) { Yajl.dump(record.merge({"__tag" => "test"})) }
 
     it 'send_messages to queue' do
-      allow(Yajl).to receive(:dump).with(record) { body }
-
       expect(driver.instance).to receive(:queue).twice.and_return("QUEUE_NAME")
-      expect(subject.queue).to receive(:send_messages).with(entries: [{ id: kind_of(String), message_body: body, delay_seconds: 0 }])
+      expect(subject.queue).to receive(:send_messages).with(entries: [{ id: kind_of(String), message_body: body, delay_seconds: 0, message_attributes: {"__tag" => {string_value: "test"}} }])
 
       driver.run(default_tag: "test") do
         driver.feed(record)

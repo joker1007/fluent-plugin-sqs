@@ -23,6 +23,7 @@ module Fluent::Plugin
     config_param :region, :string, default: 'ap-northeast-1'
     config_param :delay_seconds, :integer, default: 0
     config_param :include_tag, :bool, default: true
+    config_param :include_tag_in_message_attributes, :bool, default: true
     config_param :tag_property_name, :string, default: '__tag'
 
     config_section :buffer do
@@ -65,10 +66,9 @@ module Fluent::Plugin
     end
 
     def format(tag, time, record)
-      record[@tag_property_name] = tag if @include_tag
       record = inject_values_to_record(tag, time, record)
 
-      record.to_msgpack
+      [tag, record].to_msgpack
     end
 
     def formatted_to_msgpack_binary
@@ -84,9 +84,21 @@ module Fluent::Plugin
       batch_size = 0
       send_batches = [batch_records]
 
-      chunk.msgpack_each do |record|
+      chunk.msgpack_each do |tag, record|
+        record[@tag_property_name] = tag if @include_tag
         body = Yajl.dump(record)
         batch_size += body.bytesize
+
+        if @include_tag_in_message_attributes
+          attributes_payload = {
+            message_attributes: {
+              @tag_property_name => {
+                string_value: tag
+              }
+            }
+          }
+          batch_size += Yajl.dump(attributes_payload).bytesize
+        end
 
         if batch_size > SQS_BATCH_SEND_MAX_SIZE ||
            batch_records.length >= SQS_BATCH_SEND_MAX_MSGS
@@ -101,7 +113,13 @@ module Fluent::Plugin
                    "(Truncated message: #{body[0..200]})"
         else
           id = "#{@tag_property_name}#{SecureRandom.hex(16)}"
-          batch_records << { id: id, message_body: body, delay_seconds: @delay_seconds }
+          batch_records << {
+            id: id,
+            message_body: body,
+            delay_seconds: @delay_seconds,
+          }.tap do |rec|
+            rec.merge!(attributes_payload) if attributes_payload
+          end
         end
       end
 

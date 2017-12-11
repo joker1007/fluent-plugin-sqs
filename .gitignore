@@ -49,3 +49,4 @@ lex.yy.c
 
 # Gemfile.lock
 Gemfile.lock
+.bundle

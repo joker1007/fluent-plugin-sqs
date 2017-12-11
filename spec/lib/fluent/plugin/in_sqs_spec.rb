@@ -54,6 +54,7 @@ describe Fluent::Plugin::SQSInput do
     let(:message_attributes) do
       {
         body: 'body',
+        message_attributes: {},
         receipt_handle: 'receipt_handle',
         message_id: 'message_id',
         md5_of_body: 'md5_of_body',
@@ -61,6 +62,7 @@ describe Fluent::Plugin::SQSInput do
         attributes: { 'SenderId' => 'sender_id' }
       }
     end
+    let(:parsed_message) { message_attributes.map { |k, v| [k.to_s, v] }.to_h }
     let(:queue) { double(:queue, receive_messages: true) }
     let(:message) { double(:message, **message_attributes.merge(delete: nil)) }
     let(:messages) { [message] }
@@ -82,16 +84,55 @@ describe Fluent::Plugin::SQSInput do
 
       it 'parse through messages and emit it' do
         expect(queue).to receive(:receive_messages)
-          .with(max_number_of_messages: 10, wait_time_seconds: 10, visibility_timeout: 1) { messages }
-        expect(subject).to receive(:parse_message).with(message) { message_attributes }
+          .with(max_number_of_messages: 10, wait_time_seconds: 10, visibility_timeout: 1, message_attribute_names: []) { messages }
+        expect(subject).to receive(:parse_message).with(message) { parsed_message }
         expect(message).not_to receive(:delete)
-        expect(subject.router).to receive(:emit).with('TAG', kind_of(Fluent::EventTime), message_attributes)
+        expect(subject.router).to receive(:emit).with('TAG', kind_of(Fluent::EventTime), parsed_message)
 
         subject.run
       end
     end
 
-    context 'with no delete messages param' do
+    context 'with tag_from_message_attributes param' do
+      let(:config) do
+        %(
+         tag TAG
+         tag_from_message_attributes true
+         max_number_of_messages 10
+         wait_time_seconds 10
+         visibility_timeout 1
+         delete_message false
+      )
+      end
+
+      let(:message_attributes) do
+        {
+          body: 'body',
+          message_attributes: {"__tag" => double(string_value: "TAG_FROM_MESSAGE_ATTRIBUTES")},
+          receipt_handle: 'receipt_handle',
+          message_id: 'message_id',
+          md5_of_body: 'md5_of_body',
+          queue_url: 'queue_url',
+          attributes: { 'SenderId' => 'sender_id' }
+        }
+      end
+
+      before do
+        allow(subject).to receive(:queue) { queue }
+      end
+
+      it 'parse through messages and emit it' do
+        expect(queue).to receive(:receive_messages)
+          .with(max_number_of_messages: 10, wait_time_seconds: 10, visibility_timeout: 1, message_attribute_names: ["__tag"]) { messages }
+        expect(subject).to receive(:parse_message).with(message) { parsed_message }
+        expect(message).not_to receive(:delete)
+        expect(subject.router).to receive(:emit).with('TAG_FROM_MESSAGE_ATTRIBUTES', kind_of(Fluent::EventTime), parsed_message)
+
+        subject.run
+      end
+    end
+
+    context 'with delete messages param' do
       let(:config) do
         %(
          tag TAG
@@ -108,10 +149,10 @@ describe Fluent::Plugin::SQSInput do
 
       it 'parse through messages and emit it' do
         expect(queue).to receive(:receive_messages)
-          .with(max_number_of_messages: 10, wait_time_seconds: 10, visibility_timeout: 1) { messages }
-        expect(subject).to receive(:parse_message).with(message) { message_attributes }
+          .with(max_number_of_messages: 10, wait_time_seconds: 10, visibility_timeout: 1, message_attribute_names: []) { messages }
+        expect(subject).to receive(:parse_message).with(message) { parsed_message }
         expect(message).to receive(:delete)
-        expect(subject.router).to receive(:emit).with('TAG', kind_of(Fluent::EventTime), message_attributes)
+        expect(subject.router).to receive(:emit).with('TAG', kind_of(Fluent::EventTime), parsed_message)
 
         subject.run
       end

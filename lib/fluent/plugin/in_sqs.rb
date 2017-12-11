@@ -10,6 +10,8 @@ module Fluent::Plugin
     config_param :aws_key_id, :string, default: nil, secret: true
     config_param :aws_sec_key, :string, default: nil, secret: true
     config_param :tag, :string
+    config_param :tag_from_message_attributes, :bool, default: false
+    config_param :tag_property_name, :string, default: "__tag"
     config_param :region, :string, default: 'ap-northeast-1'
     config_param :sqs_url, :string, default: nil
     config_param :receive_interval, :time, default: 0.1
@@ -21,6 +23,11 @@ module Fluent::Plugin
 
     def configure(conf)
       super
+
+      if @tag_from_message_attributes && @tag_property_name.nil?
+        raise ConfigError, "If `tag_from_message_attributes` is true, `tag_property_name` must be set"
+      end
+      @message_attribute_names = @tag_from_message_attributes ? Array(@tag_property_name) : []
 
       Aws.config = {
         access_key_id: @aws_key_id,
@@ -49,15 +56,21 @@ module Fluent::Plugin
 
     def run
       queue.receive_messages(
+        message_attribute_names: @message_attribute_names,
         max_number_of_messages: @max_number_of_messages,
         wait_time_seconds: @wait_time_seconds,
         visibility_timeout: @visibility_timeout
       ).each do |message|
         record = parse_message(message)
+        if @tag_from_message_attributes
+          tag = record["message_attributes"][@tag_property_name].string_value || @tag
+        else
+          tag = @tag
+        end
+
+        router.emit(tag, Fluent::Engine.now, record)
 
         message.delete if @delete_message
-
-        router.emit(@tag, Fluent::Engine.now, record)
       end
     rescue
       log.error 'failed to emit or receive', error: $ERROR_INFO.to_s, error_class: $ERROR_INFO.class.to_s
@@ -69,6 +82,7 @@ module Fluent::Plugin
     def parse_message(message)
       {
         'body' => message.body.to_s,
+        'message_attributes' => message.message_attributes,
         'receipt_handle' => message.receipt_handle.to_s,
         'message_id' => message.message_id.to_s,
         'md5_of_body' => message.md5_of_body.to_s,
