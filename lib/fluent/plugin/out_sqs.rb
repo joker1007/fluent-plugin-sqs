@@ -93,7 +93,8 @@ module Fluent::Plugin
           attributes_payload = {
             message_attributes: {
               @tag_property_name => {
-                string_value: tag
+                string_value: tag,
+                data_type: "String",
               }
             }
           }

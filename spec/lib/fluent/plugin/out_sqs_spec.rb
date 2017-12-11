@@ -121,7 +121,7 @@ describe Fluent::Plugin::SQSOutput do
 
     it 'send_messages to queue' do
       expect(driver.instance).to receive(:queue).twice.and_return("QUEUE_NAME")
-      expect(subject.queue).to receive(:send_messages).with(entries: [{ id: kind_of(String), message_body: body, delay_seconds: 0, message_attributes: {"__tag" => {string_value: "test"}} }])
+      expect(subject.queue).to receive(:send_messages).with(entries: [{ id: kind_of(String), message_body: body, delay_seconds: 0, message_attributes: {"__tag" => {string_value: "test", data_type: "String"}} }])
 
       driver.run(default_tag: "test") do
         driver.feed(record)
