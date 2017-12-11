@@ -63,7 +63,7 @@ module Fluent::Plugin
       ).each do |message|
         record = parse_message(message)
         if @tag_from_message_attributes
-          tag = record["message_attributes"][@tag_property_name].string_value || @tag
+          tag = message.message_attributes[@tag_property_name].string_value || @tag
         else
           tag = @tag
         end
@@ -82,7 +82,6 @@ module Fluent::Plugin
     def parse_message(message)
       {
         'body' => message.body.to_s,
-        'message_attributes' => message.message_attributes,
         'receipt_handle' => message.receipt_handle.to_s,
         'message_id' => message.message_id.to_s,
         'md5_of_body' => message.md5_of_body.to_s,
